@@ -45,6 +45,8 @@ installer_base_modules := \
 	tune2fs \
 	mke2fs \
 	e2fsck
+installer_base_modules += $(ICC_COMPILER_LIBRARIES)
+
 installer_base_files = \
 	$(call module-built-files,$(installer_base_modules))
 
