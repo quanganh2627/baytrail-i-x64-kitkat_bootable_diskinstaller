@@ -236,7 +236,8 @@ $(installer_bootloader_img): $(diskinstaller_root)/config.mk \
 		$(SYSLINUX_MK_IMG) \
 		$(SYSLINUX_BIN)
 	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) echo "fs0:\kernel.efi $(BOARD_KERNEL_CMDLINE) console=tty console=ttyS0,115200 initrd=ramdisk-installer.img.gz" > "$(TARGET_INSTALLER_OUT)/startup.nsh"
+	$(hide) echo "fs1:\kernel.efi $(BOARD_KERNEL_CMDLINE) console=tty console=ttyS0,115200 initrd=ramdisk-installer.img.gz" > "$(TARGET_INSTALLER_OUT)/startup.nsh"
+	$(hide) echo "fs0:\kernel.efi $(BOARD_KERNEL_CMDLINE) console=tty console=ttyS0,115200 initrd=ramdisk-installer.img.gz" >> "$(TARGET_INSTALLER_OUT)/startup.nsh"
 	$(hide) $(SYSLINUX_MK_IMG) --syslinux $(SYSLINUX_BIN) \
 			   --tmpdir $(TARGET_INSTALLER_OUT)/bootloader \
 			   --config $(diskinstaller_root)/syslinux.cfg \

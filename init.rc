@@ -18,16 +18,12 @@ on init
     chmod 1777 /tmp
 
 on post-fs
-    mount squashfs /dev/block/sda3 /data
-    mount ext4 /dev/block/sda4 /stash rw
+    # wait for device nodes to be added
+    wait /dev/block/sdb 20
     mount squashfs /dev/block/sdb3 /data
     mount ext4 /dev/block/sdb4 /stash rw
-    mount squashfs /dev/block/sdc3 /data
-    mount ext4 /dev/block/sdc4 /stash rw
-
-    wait /data/system.img 20
-    #Disable auto-start
-    #start installer
+    mount squashfs /dev/block/sda3 /data
+    mount ext4 /dev/block/sda4 /stash rw
 
 on boot
     ifup lo
@@ -35,6 +31,9 @@ on boot
     domainname localdomain
 
     class_start default
+
+    wait /data/system.img 20
+    start installer
 
 service ueventd /sbin/ueventd
     critical
@@ -49,8 +48,7 @@ service logcat /system/bin/logcat
 
 service console /system/bin/sh
     console
-#    Start console and let the user run the installer
-#    disabled
+    disabled
 
 service adbd /sbin/adbd
     disabled
