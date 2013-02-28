@@ -252,7 +252,7 @@ installer_layout := $(diskinstaller_root)/installer_img_layout.conf
 
 # Our version does not perform properly for Baytrail, need to investigate still
 #edit_mbr := $(HOST_OUT_EXECUTABLES)/editdisklbl
-edit_mbr := vendor/intel/baytrail/baylake/editdisklbl
+edit_mbr := device/intel/baytrail/baylake/editdisklbl
 INSTALLED_DISKINSTALLERIMAGE_TARGET := $(PRODUCT_OUT)/installer.img
 $(INSTALLED_DISKINSTALLERIMAGE_TARGET): $(diskinstaller_root)/config.mk \
 		$(installer_bootloader_img) \
