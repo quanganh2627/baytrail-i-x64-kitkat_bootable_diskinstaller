@@ -28,9 +28,6 @@
 
 #include "diskconfig/diskconfig.h"
 
-/* give us some room */
-#define EXTRA_LBAS      100
-
 static struct pf_map {
     struct part_info *pinfo;
     const char *filename;
@@ -57,9 +54,8 @@ parse_args(int argc, char *argv[], struct disk_info **dinfo, int *test,
 {
     char *layout_conf = NULL;
     char *img_file = NULL;
-    struct stat filestat;
+    struct stat64 filestat;
     int x;
-    int update_lba = 0;
 
     while ((x = getopt (argc, argv, "vthl:i:")) != EOF) {
         switch (x) {
@@ -95,7 +91,7 @@ parse_args(int argc, char *argv[], struct disk_info **dinfo, int *test,
         return usage();
     }
 
-    if (stat(img_file, &filestat)) {
+    if (stat64(img_file, &filestat)) {
         perror("Cannot stat image file");
         return 1;
     }
@@ -114,11 +110,6 @@ parse_args(int argc, char *argv[], struct disk_info **dinfo, int *test,
         return 1;
     }
 
-    if ((*dinfo)->num_lba == 0) {
-        (*dinfo)->num_lba = (*dinfo)->skip_lba + EXTRA_LBAS;
-        update_lba = 1;
-    }
-
     /* parse the filename->partition mappings from the command line and patch
      * up a loaded config file's partition table entries to have
      * length == filesize */
@@ -127,7 +118,7 @@ parse_args(int argc, char *argv[], struct disk_info **dinfo, int *test,
         char *pair = argv[optind++];
         char *part_name;
         struct part_info *pinfo;
-        struct stat tmp_stat;
+        struct stat64 tmp_stat;
 
         if (x >= MAX_NUM_PARTS) {
             fprintf(stderr, "Error: Too many partitions specified (%d)!\n", x);
@@ -148,16 +139,12 @@ parse_args(int argc, char *argv[], struct disk_info **dinfo, int *test,
         part_file_map[x].pinfo = pinfo;
         part_file_map[x++].filename = pair;
 
-        if (stat(pair, &tmp_stat) < 0) {
+        if (stat64(pair, &tmp_stat) < 0) {
             fprintf(stderr, "Could not stat file: %s\n", pair);
             return 1;
         }
 
-        pinfo->len_kb = (uint32_t) ((tmp_stat.st_size + 1023) >> 10);
-        if (update_lba)
-            (*dinfo)->num_lba += 
-                    ((uint64_t)pinfo->len_kb * 1024) / (*dinfo)->sect_size;
-        printf("Updated %s length to be %uKB\n", pinfo->name, pinfo->len_kb);
+        pinfo->len_kb = (tmp_stat.st_size + 1023) >> 10;
     }
 
     return 0;
@@ -174,6 +161,11 @@ main(int argc, char *argv[])
     if (parse_args(argc, argv, &dinfo, &test, &verbose))
         return 1;
 
+    if (process_disk_config(dinfo)) {
+        fprintf(stderr, "Disk configuration is bad\n");
+        return 1;
+    }
+
     if (verbose)
         dump_disk_config(dinfo);
 
@@ -188,7 +180,7 @@ main(int argc, char *argv[])
     printf("Copying images to specified partition offsets\n");
     /* now copy the images to their appropriate locations on disk */
     for (cnt = 0; cnt < MAX_NUM_PARTS && part_file_map[cnt].pinfo; ++cnt) {
-        loff_t offs = part_file_map[cnt].pinfo->start_lba * dinfo->sect_size;
+        off64_t offs = part_file_map[cnt].pinfo->start_lba * dinfo->sect_size;
         const char *dest_fn = dinfo->device;
         if (write_raw_image(dest_fn, part_file_map[cnt].filename, offs, test)) {
             fprintf(stderr, "Could not write images after editing label.\n");

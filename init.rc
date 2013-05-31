@@ -11,7 +11,19 @@ on init
 
     mkdir /data
     mkdir /cache
+    mkdir /stash
+    mkdir /bootloader
+    mkdir /tmp
     mount /tmp /tmp tmpfs
+    chmod 1777 /tmp
+
+on post-fs
+    # wait for device nodes to be added
+    wait /dev/block/sdb 20
+    mount squashfs /dev/block/sdb3 /data
+    mount ext4 /dev/block/sdb4 /stash rw
+    mount squashfs /dev/block/sda3 /data
+    mount ext4 /dev/block/sda4 /stash rw
 
 on boot
     ifup lo
@@ -20,15 +32,28 @@ on boot
 
     class_start default
 
+    wait /data/system.img 20
+    start installer
+
 service ueventd /sbin/ueventd
     critical
 
-service installer /system/bin/installer -p /dev/block/sdb2
+service installer /system/bin/installer
     console
     oneshot
+    disabled
 
 service logcat /system/bin/logcat
     console
 
 service console /system/bin/sh
     console
+    disabled
+
+service adbd /sbin/adbd
+    disabled
+
+on property:init.svc.installer=stopped
+    wait 2
+    start console
+    start adbd

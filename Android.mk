@@ -6,7 +6,9 @@ ifeq ($(TARGET_USE_DISKINSTALLER),true)
 LOCAL_SRC_FILES := \
 	installer.c
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/libdiskconfig
+LOCAL_C_INCLUDES := \
+	system/extras/ext4_utils \
+	system/core/libsparse/include
 
 LOCAL_CFLAGS := -O2 -g -W -Wall -Werror
 
@@ -18,6 +20,9 @@ LOCAL_SYSTEM_SHARED_LIBRARIES := \
 	libdiskconfig \
 	libcutils \
 	liblog \
+	libext4_utils \
+	libsparse \
+	libz \
 	libc
 
 include $(BUILD_EXECUTABLE)
