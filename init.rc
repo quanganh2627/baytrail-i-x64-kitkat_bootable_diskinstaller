@@ -22,8 +22,6 @@ on post-fs
     wait /dev/block/sdb 20
     mount squashfs /dev/block/sdb3 /data
     mount ext4 /dev/block/sdb4 /stash rw
-    mount squashfs /dev/block/sda3 /data
-    mount ext4 /dev/block/sda4 /stash rw
 
 on boot
     ifup lo

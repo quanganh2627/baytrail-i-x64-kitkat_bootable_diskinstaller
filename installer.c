@@ -369,11 +369,18 @@ do_syslinux(const char* dst, struct disk_info *dinfo, int test)
         return 1;
     }
 
+    int mount_check =0;
     /* Mount file system */
+    do {
     if (mount(dst, BOOTLOADER_PATH, "vfat", 0, NULL)) {
+	mount_check=0;
         ALOGE("Could not mount %s on %s as vfat", dst, BOOTLOADER_PATH);
-        return 1;
-    }
+         /*return 1;*/
+         } else {
+              mount_check = 1;
+         }
+
+     } while (mount_check == 0);
 
     /* Copy files there */
     dirp = opendir(SYSLINUX_FILES_PATH);
@@ -506,6 +513,8 @@ process_image_node(cnode *img, struct disk_info *dinfo, int test)
     int footer_size = 0; /* in kilo-bytes */
     int is_e2fs = 0;
     int is_vfat = 0;
+    int check = 0;
+    int mkfsext4check = 0;
 
     filename = config_str(img, "filename", NULL);
     /* Use partname as either filename or partition parameter */
@@ -613,20 +622,30 @@ process_image_node(cnode *img, struct disk_info *dinfo, int test)
                 * in resize2fs */
                footer_size = 0;
             }
-            if (make_ext4fs(dest_part, reserved, vol_lbl, NULL)) {
+            mkfsext4check = make_ext4fs(dest_part, reserved, vol_lbl, NULL);
+            if (mkfsext4check == 1 ) {
                 ALOGE("make_ext4fs failed");
-                goto fail;
+                if(make_ext4fs(dest_part, reserved, vol_lbl, NULL))
+		{
+                  goto fail;
+                }
             }
         } else {
             if (!strcmp(tmp, "ext2")) {
                 rv = exec_cmd(MKE2FS_BIN, "-L", vol_lbl, dest_part, NULL);
                 is_e2fs = 1;
             } else if (!strcmp(tmp, "ext3")) {
-                rv = exec_cmd(MKE2FS_BIN, "-L", vol_lbl, "-j", dest_part, NULL);
-                is_e2fs = 1;
+		do {
+			rv = exec_cmd(MKE2FS_BIN, "-L", vol_lbl, "-j", dest_part, NULL);
+                   }while(rv != 0);
+                   is_e2fs = 1;
             } else if (!strcmp(tmp, "vfat")) {
                 ALOGI("--- process mkfs - MKDOSFS_BIN on [%s]", dest_part);
-                rv = exec_cmd(MKDOSFS_BIN, "-L", vol_lbl, dest_part, NULL);
+                do
+                 {
+                    rv = exec_cmd(MKDOSFS_BIN, "-L", vol_lbl, dest_part, NULL);
+
+                 }while(rv != 0);
                 is_vfat = 1;
             } else {
                 ALOGE("Unknown filesystem type for mkfs: %s", tmp);
@@ -743,8 +762,18 @@ process_image_node(cnode *img, struct disk_info *dinfo, int test)
 
     switch(type) {
         case INSTALL_IMAGE_RAW:
-            if (write_raw_image(dinfo->device, filename, offset, test))
+            check = write_raw_image(dinfo->device, filename, offset, test);
+
+            if(check == 1)
+            {
+             mount("/dev/block/sdb3", "/data", "squashfs", MS_RDONLY, NULL);
+             mount("/dev/block/sdb4", "/stash", "ext4", 0, NULL);
+             check = write_raw_image(dinfo->device, filename, offset, test);
+            }
+            if(check == 1)
+            {
                 goto fail;
+            }
             break;
 
         case INSTALL_IMAGE_EXT3:
