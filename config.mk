@@ -187,9 +187,24 @@ $(installer_boot_img):  $(diskinstaller_root)/config.mk \
 	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
 		     --ramdisk $(installer_ramdisk) \
-		     --cmdline "$(BOARD_KERNEL_CMDLINE) vga=normal androidboot.console=tty0" \
+		     --cmdline "$(BOARD_KERNEL_CMDLINE) vga=normal androidboot.console=tty0 androidboot.bootmedia=harddisk" \
 		     --output $@
 
+ifeq ($(TARGET_USE_SYSLINUX),true)
+ifeq ($(BIGCORE_USB_INSTALLER),true)
+usb_installer_boot_img := $(PRODUCT_OUT)/boot.bin
+$(usb_installer_boot_img):  $(diskinstaller_root)/config.mk \
+		$(INSTALLED_KERNEL_TARGET) \
+		$(INSTALLED_RAMDISK_TARGET) \
+		$(MKBOOTIMG)
+	$(hide) mkdir -p $(PRODUCT_OUT)
+	$(hide) rm -f $(PRODUCT_OUT)/boot.bin
+	$(hide) $(BIGCORE_MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
+		     --ramdisk $(INSTALLED_RAMDISK_TARGET) \
+		     --cmdline "$(BOARD_KERNEL_CMDLINE)" \
+		     --output $@
+endif
+endif
 
 # Create a small amount of writable space under /stash where users can copy
 # stuff off their device if needed onto the USB key
@@ -257,6 +272,7 @@ INSTALLED_DISKINSTALLERIMAGE_TARGET := $(PRODUCT_OUT)/installer.img
 $(INSTALLED_DISKINSTALLERIMAGE_TARGET): $(diskinstaller_root)/config.mk \
 		$(installer_bootloader_img) \
 		$(installer_boot_img) \
+		$(usb_installer_boot_img) \
 		$(installer_data_img) \
 		$(installer_stash_img) \
 		$(edit_mbr) \
