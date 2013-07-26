@@ -192,13 +192,13 @@ $(installer_boot_img):  $(diskinstaller_root)/config.mk \
 
 ifeq ($(TARGET_USE_SYSLINUX),true)
 ifeq ($(BIGCORE_USB_INSTALLER),true)
-usb_installer_boot_img := $(PRODUCT_OUT)/boot.bin
+usb_installer_boot_img := $(PRODUCT_OUT)/boot.img
 $(usb_installer_boot_img):  $(diskinstaller_root)/config.mk \
 		$(INSTALLED_KERNEL_TARGET) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(MKBOOTIMG)
 	$(hide) mkdir -p $(PRODUCT_OUT)
-	$(hide) rm -f $(PRODUCT_OUT)/boot.bin
+	$(hide) rm -f $(PRODUCT_OUT)/boot.img
 	$(hide) $(BIGCORE_MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
 		     --ramdisk $(INSTALLED_RAMDISK_TARGET) \
 		     --cmdline "$(BOARD_KERNEL_CMDLINE)" \
