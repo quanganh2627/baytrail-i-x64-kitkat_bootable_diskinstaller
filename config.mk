@@ -1,9 +1,8 @@
+# note: requires x86 because we assume grub is the mbr bootloader.
+ifeq ($(TARGET_ARCH),x86)
 ifeq ($(TARGET_USE_DISKINSTALLER),true)
 
 diskinstaller_root := bootable/diskinstaller
-
-installer_root_out := $(TARGET_INSTALLER_OUT)/installer-root
-installer_system_out := $(installer_root_out)/system
 
 android_sysbase_modules := \
 	libc \
@@ -12,20 +11,15 @@ android_sysbase_modules := \
 	liblog \
 	libm \
 	libstdc++ \
-	libnetutils \
-	libusbhost \
 	linker \
-	busybox\
 	ash \
 	toolbox \
 	logcat \
 	gdbserver \
 	strace \
-	netcfg \
-	simg2img \
-	fsck_msdos
+	netcfg
 android_sysbase_files = \
-	$(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(android_sysbase_modules)))
+	$(call module-installed-files,$(android_sysbase_modules))
 
 # $(1): source base dir
 # $(2): target base dir
@@ -34,7 +28,7 @@ $(hide) $(foreach _f,$(android_sysbase_files), \
 	f=$(patsubst $(1)/%,$(2)/%,$(_f)); \
 	mkdir -p `dirname $$f`; \
 	echo "Copy: $$f" ; \
-	$(ACP) -fdp $(_f) $$f; \
+	cp -fR $(_f) $$f; \
 )
 endef
 
@@ -46,9 +40,6 @@ installer_base_modules := \
 	libext2_blkid \
 	libext2_uuid \
 	libext2_profile \
-	libext4_utils \
-	libsparse \
-	libz \
 	badblocks \
 	resize2fs \
 	tune2fs \
@@ -66,245 +57,235 @@ $(hide) $(foreach m,$(installer_base_modules), \
 		$(firstword $(strip $(call module-installed-files,$(m))))); \
 	echo "Copy: $$src -> $$dest"; \
 	mkdir -p `dirname $$dest`; \
-	$(ACP) -fdp $$src $$dest; \
+	cp -fdp $$src $$dest; \
 )
 endef
 
 # Build the installer ramdisk image
 installer_initrc := $(diskinstaller_root)/init.rc
-installer_ramdisk := $(TARGET_INSTALLER_OUT)/ramdisk-installer.img.gz
+installer_kernel := $(INSTALLED_KERNEL_TARGET)
+installer_ramdisk := $(TARGET_INSTALLER_OUT)/ramdisk-installer.img
+installer_build_prop := $(INSTALLED_BUILD_PROP_TARGET)
+installer_config := $(diskinstaller_root)/installer.conf
 installer_binary := \
 	$(call intermediates-dir-for,EXECUTABLES,diskinstaller)/diskinstaller
-ifeq ($(TARGET_USE_SYSLINUX),true)
-ifeq ($(TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG),true)
-installer_binary_syslinux := \
-	$(call intermediates-dir-for,EXECUTABLES,android_syslinux)/android_syslinux
-endif
-endif
+
 $(installer_ramdisk): $(diskinstaller_root)/config.mk \
 		$(MKBOOTFS) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(INSTALLED_BOOTIMAGE_TARGET) \
 		$(TARGET_DISK_LAYOUT_CONFIG) \
 		$(installer_binary) \
-		$(installer_binary_syslinux) \
 		$(installer_initrc) \
-		$(TARGET_DISKINSTALLER_CONFIG) \
+		$(installer_kernel) \
+		$(installer_config) \
 		$(android_sysbase_files) \
 		$(installer_base_files) \
-		$(INSTALLED_BUILD_PROP_TARGET) $(MINIGZIP) $(ACP)
+		$(installer_build_prop)
 	@echo ----- Making installer image ------
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) rm -rf $(installer_root_out)
+	rm -rf $(TARGET_INSTALLER_OUT)
+	mkdir -p $(TARGET_INSTALLER_OUT)
+	mkdir -p $(TARGET_INSTALLER_ROOT_OUT)
+	mkdir -p $(TARGET_INSTALLER_ROOT_OUT)/sbin
+	mkdir -p $(TARGET_INSTALLER_ROOT_OUT)/data
+	mkdir -p $(TARGET_INSTALLER_SYSTEM_OUT)
+	mkdir -p $(TARGET_INSTALLER_SYSTEM_OUT)/etc
+	mkdir -p $(TARGET_INSTALLER_SYSTEM_OUT)/bin
 	@echo Copying baseline ramdisk...
-	$(hide) $(ACP) -rpdf $(TARGET_ROOT_OUT) $(installer_root_out)
-	$(hide) rm -f $(installer_root_out)/initlogo.rle
-	$(hide) mkdir -p $(installer_system_out)/
-	$(hide) mkdir -p $(installer_system_out)/etc
+	cp -fR $(TARGET_ROOT_OUT) $(TARGET_INSTALLER_OUT)
 	@echo Copying sysbase files...
-	$(call sysbase-copy-files,$(TARGET_OUT),$(installer_system_out))
+	$(call sysbase-copy-files,$(TARGET_OUT),$(TARGET_INSTALLER_SYSTEM_OUT))
 	@echo Copying installer base files...
 	$(call installer-copy-modules,$(TARGET_OUT),\
-		$(installer_system_out))
+		$(TARGET_INSTALLER_SYSTEM_OUT))
 	@echo Modifying ramdisk contents...
-	$(hide) $(ACP) -f $(installer_initrc) $(installer_root_out)/
-	$(hide) $(ACP) -f $(TARGET_DISK_LAYOUT_CONFIG) \
-		$(installer_system_out)/etc/disk_layout.conf
-	$(hide) $(ACP) -f $(TARGET_DISKINSTALLER_CONFIG) \
-		$(installer_system_out)/etc/installer.conf
-	$(hide) $(ACP) -f $(installer_binary) $(installer_system_out)/bin/installer
-ifeq ($(TARGET_USE_SYSLINUX),true)
-ifeq ($(TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG),true)
-	$(hide) $(ACP) -f $(installer_binary_syslinux) $(installer_system_out)/bin/syslinux
-	$(hide) chmod +x $(installer_system_out)/bin/syslinux
-endif
-endif
-	$(hide) chmod ug+rw $(installer_root_out)/default.prop
-	$(hide) cat $(INSTALLED_BUILD_PROP_TARGET) >> $(installer_root_out)/default.prop
-	$(hide) $(MKBOOTFS) $(installer_root_out) | $(MINIGZIP) > $@
+	cp -f $(installer_initrc) $(TARGET_INSTALLER_ROOT_OUT)/
+	cp -f $(TARGET_DISK_LAYOUT_CONFIG) \
+		$(TARGET_INSTALLER_SYSTEM_OUT)/etc/disk_layout.conf
+	cp -f $(installer_config) \
+		$(TARGET_INSTALLER_SYSTEM_OUT)/etc/installer.conf
+	cp -f $(installer_binary) $(TARGET_INSTALLER_SYSTEM_OUT)/bin/installer
+	$(hide) chmod ug+rw $(TARGET_INSTALLER_ROOT_OUT)/default.prop
+	cat $(installer_build_prop) >> $(TARGET_INSTALLER_ROOT_OUT)/default.prop
+	$(MKBOOTFS) $(TARGET_INSTALLER_ROOT_OUT) | gzip > $(installer_ramdisk)
 	@echo ----- Made installer ramdisk -[ $@ ]-
 
+######################################################################
+# Now the installer boot image which includes the kernel and the ramdisk
+internal_installerimage_args := \
+	--kernel $(installer_kernel) \
+	--ramdisk $(installer_ramdisk)
 
-# Data image containing all the images that installer will write to the device
-installer_data_img := $(TARGET_INSTALLER_OUT)/installer_data.squashfs
+internal_installerimage_files := \
+	$(filter-out --%,$(internal_installerimage_args))
 
-ifeq ($(TARGET_USE_EFI),true)
-ifneq ($(TARGET_NO_RECOVERY),true)
-INSTALLED_RECOVERYIMAGE_TARGET := $(PRODUCT_OUT)/recovery.img
-else
-INSTALLED_RECOVERYIMAGE_TARGET :=
+BOARD_INSTALLER_CMDLINE := $(strip $(BOARD_INSTALLER_CMDLINE))
+ifdef BOARD_INSTALLER_CMDLINE
+  internal_installerimage_args += --cmdline "$(BOARD_INSTALLER_CMDLINE)"
 endif
-endif
-installer_data_images := $(INSTALLED_BOOTIMAGE_TARGET) \
-			 $(INSTALLED_RECOVERYIMAGE_TARGET) \
-			 $(INSTALLED_SYSTEMIMAGE) \
-			 $(INSTALLED_USERDATAIMAGE_TARGET)
-ifeq ($(TARGET_STAGE_DROIDBOOT),true)
-installer_data_images += $(DROIDBOOT_BOOTIMAGE)
-endif
-ifeq ($(TARGET_USE_SYSLINUX),true)
-installer_data_images += $(SYSLINUX_BASE)/mbr.bin
 
-ifeq ($(TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG),true)
-installer_data_images_syslinux = $(TARGET_SYSLINUX_FILES)
-installer_data_images_syslinux_cfg = $(TARGET_SYSLINUX_CONFIG_TEMPLATE)
-else # TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG
-installer_data_images += $(INSTALLED_BOOTLOADER_MODULE)
-endif # TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG
+installer_tmp_img := $(TARGET_INSTALLER_OUT)/installer_tmp.img
+tmp_dir_for_inst_image := \
+	$(call intermediates-dir-for,EXECUTABLES,installer_img)/installer_img
+internal_installerimage_args += --tmpdir $(tmp_dir_for_inst_image)
+internal_installerimage_args += --genext2fs $(MKEXT2IMG)
+$(installer_tmp_img): $(MKEXT2IMG) $(internal_installerimage_files)
+	$(call pretty,"Target installer image: $@")
+	$(hide) $(MKEXT2BOOTIMG) $(internal_installerimage_args) --output $@
 
-else # TARGET_USE_SYSLINUX
-installer_data_images += $(INSTALLED_BOOTLOADER_MODULE)
-endif # TARGET_USE_SYSLINUX
+######################################################################
+# Now make a data image that contains all the target image files for the
+# installer.
+
+bootldr_bin := $(PRODUCT_OUT)/grub/grub.bin
+installer_target_data_files := \
+	$(INSTALLED_BOOTIMAGE_TARGET) \
+	$(INSTALLED_SYSTEMIMAGE) \
+	$(INSTALLED_USERDATAIMAGE_TARGET) \
+	$(bootldr_bin)
+
+# $(1): src directory
+# $(2): output file
+# $(3): mount point
+# $(4): ext variant (ext2, ext3, ext4)
+# $(5): size of the partition
+define build-installerimage-ext-target
+  @mkdir -p $(dir $(2))
+    $(hide) PATH=$(foreach p,$(INTERNAL_USERIMAGES_BINARY_PATHS),$(p):)$(PATH) \
+          $(MKEXTUSERIMG) $(1) $(2) $(4) $(3) $(5)
+endef
+
+installer_data_img := $(TARGET_INSTALLER_OUT)/installer_data.img
 $(installer_data_img): $(diskinstaller_root)/config.mk \
-			$(installer_data_images) \
-			$(installer_data_images_syslinux) \
-			$(installer_data_images_syslinux_config) | $(ACP)
+			$(installer_target_data_files) \
+			$(MKEXT2IMG) \
+			$(installer_ramdisk)
 	@echo --- Making installer data image ------
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)/data
-	$(hide) $(ACP) -f $(installer_data_images) $(TARGET_INSTALLER_OUT)/data/
-ifeq ($(TARGET_USE_SYSLINUX),true)
-ifeq ($(TARGET_INSTALL_CUSTOM_SYSLINUX_CONFIG),true)
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)/data/syslinux/
-	$(hide) $(ACP) -f $(installer_data_images_syslinux) \
-		$(TARGET_INSTALLER_OUT)/data/syslinux/
-	$(hide) $(ACP) -f $(installer_data_images_syslinux_cfg) \
-		$(TARGET_INSTALLER_OUT)/data/syslinux/syslinux.cfg
-endif
-endif
-	$(hide) mksquashfs $(TARGET_INSTALLER_OUT)/data $@ -no-recovery -noappend
+	mkdir -p $(TARGET_INSTALLER_OUT)
+	mkdir -p $(TARGET_INSTALLER_OUT)/data
+	cp -f $(bootldr_bin) $(TARGET_INSTALLER_OUT)/data/bootldr.bin
+	cp -f $(INSTALLED_BOOTIMAGE_TARGET) $(TARGET_INSTALLER_OUT)/data/boot.img
+	cp -f $(INSTALLED_SYSTEMIMAGE) \
+		$(TARGET_INSTALLER_OUT)/data/system.img
+	cp -f $(INSTALLED_USERDATAIMAGE_TARGET) \
+		$(TARGET_INSTALLER_OUT)/data/userdata.img
+	$(call build-installerimage-ext-target,$(TARGET_INSTALLER_OUT)/data,$@, \
+		inst_data,ext4,$(BOARD_INSTALLERIMAGE_PARTITION_SIZE))
 	@echo --- Finished installer data image -[ $@ ]-
 
-
-
-# Bootimage for entering the installation process
-# Force normal VGA so that printks can be seen on the display
-installer_boot_img := $(TARGET_INSTALLER_OUT)/installer_boot.img
-$(installer_boot_img):  $(diskinstaller_root)/config.mk \
-		$(INSTALLED_KERNEL_TARGET) \
-		$(installer_ramdisk) \
-		$(MKBOOTIMG)
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
-		     --ramdisk $(installer_ramdisk) \
-		     --cmdline "$(BOARD_KERNEL_CMDLINE) vga=normal androidboot.console=tty0 androidboot.bootmedia=harddisk" \
-		     --output $@
-
-ifeq ($(TARGET_USE_SYSLINUX),true)
-ifeq ($(BIGCORE_USB_INSTALLER),true)
-usb_installer_boot_img := $(PRODUCT_OUT)/boot.img
-$(usb_installer_boot_img):  $(diskinstaller_root)/config.mk \
-		$(INSTALLED_KERNEL_TARGET) \
-		$(INSTALLED_RAMDISK_TARGET) \
-		$(MKBOOTIMG)
-	$(hide) mkdir -p $(PRODUCT_OUT)
-	$(hide) rm -f $(PRODUCT_OUT)/boot.img
-	$(hide) $(BIGCORE_MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
-		     --ramdisk $(INSTALLED_RAMDISK_TARGET) \
-		     --cmdline "$(BOARD_KERNEL_CMDLINE)" \
-		     --output $@
-endif
-endif
-
-# Create a small amount of writable space under /stash where users can copy
-# stuff off their device if needed onto the USB key
-installer_stash_img := $(TARGET_INSTALLER_OUT)/installer_stash.img
-installer_stash_size := 10M
-$(installer_stash_img): $(diskinstaller_root)/config.mk $(MAKE_EXT4FS)
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) $(MAKE_EXT4FS) -l $(installer_stash_size) -a stash $@
-
-# A phony target for all the diskinstaller image artifacts that don't
-# depend on SYSLINUX
-.PHONY: diskinstaller-partitions
-diskinstaller-partitions: \
-		$(installer_data_img) \
-		$(installer_boot_img) \
-		$(installer_stash_img)
-
-ifeq ($(TARGET_USE_SYSLINUX),true)
-# bootloader partition contains syslinux binaries and configuration; the
-# actual kernels for the boot targets live on other partitions and are
-# in standard android boot format.
-# The SYSLINUX Makefiles create one of these already, but we need one
-# with our own configuration to bootload the USB stick
-installer_bootloader_img := $(TARGET_INSTALLER_OUT)/installer_bootloader.img
-installer_syslinux_files := $(diskinstaller_root)/splash.png \
-		$(SYSLINUX_BASE)/vesamenu.c32 \
-		$(SYSLINUX_BASE)/android.c32
-ifeq ($(TARGET_USE_INSTALLER_SPECIAL_PREBUILT_KERNEL),true)
-$(TARGET_INSTALLER_OUT)/kernel.efi:
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	tar -xv -C $(TARGET_INSTALLER_OUT) -f $(TARGET_KERNEL_TARBALL)
-	$(hide) mv $(TARGET_INSTALLER_OUT)/kernel $(TARGET_INSTALLER_OUT)/kernel.efi
-
-installer_syslinux_files += $(TARGET_INSTALLER_OUT)/kernel.efi \
-                            $(installer_ramdisk)
-else
-
-installer_syslinux_files += $(PRODUCT_OUT)/kernel.efi \
-                            $(installer_ramdisk)
-endif
-
-$(installer_bootloader_img): $(diskinstaller_root)/config.mk \
-		$(installer_syslinux_files) \
-		$(SYSLINUX_MK_IMG) \
-		$(SYSLINUX_BIN)
-	$(hide) mkdir -p $(TARGET_INSTALLER_OUT)
-	$(hide) echo "fs1:\kernel.efi $(BOARD_KERNEL_CMDLINE) console=tty console=ttyS0,115200 initrd=ramdisk-installer.img.gz" > "$(TARGET_INSTALLER_OUT)/startup.nsh"
-	$(hide) echo "fs0:\kernel.efi $(BOARD_KERNEL_CMDLINE) console=tty console=ttyS0,115200 initrd=ramdisk-installer.img.gz" >> "$(TARGET_INSTALLER_OUT)/startup.nsh"
-	$(hide) $(SYSLINUX_MK_IMG) --syslinux $(SYSLINUX_BIN) \
-			   --tmpdir $(TARGET_INSTALLER_OUT)/bootloader \
-			   --config $(diskinstaller_root)/syslinux.cfg \
-			   --extra-size 10240 \
-			   --output $@ \
-			   $(installer_syslinux_files) $(TARGET_INSTALLER_OUT)/startup.nsh
-
-
-# Create a hard disk image that can be dd'd directly to the USB
-# stick block device
+######################################################################
+# now combine the installer image with the grub bootloader
+grub_bin := $(PRODUCT_OUT)/grub/grub.bin
 installer_layout := $(diskinstaller_root)/installer_img_layout.conf
+edit_mbr := $(HOST_OUT_EXECUTABLES)/editdisklbl
 
-# Our version does not perform properly for Baytrail, need to investigate still
-#edit_mbr := $(HOST_OUT_EXECUTABLES)/editdisklbl
-edit_mbr := device/intel/baytrail/baylake/editdisklbl
-INSTALLED_DISKINSTALLERIMAGE_TARGET := $(PRODUCT_OUT)/installer.img
-$(INSTALLED_DISKINSTALLERIMAGE_TARGET): $(diskinstaller_root)/config.mk \
-		$(installer_bootloader_img) \
-		$(installer_boot_img) \
-		$(usb_installer_boot_img) \
-		$(installer_data_img) \
-		$(installer_stash_img) \
-		$(edit_mbr) \
-		$(installer_layout) \
-		$(installer_mbr_bin)
+INSTALLED_DISK_INSTALLER_IMAGE_TARGET := $(PRODUCT_OUT)/installer.img
+$(INSTALLED_DISK_INSTALLER_IMAGE_TARGET): \
+					$(installer_tmp_img) \
+					$(installer_data_img) \
+					$(grub_bin) \
+					$(edit_mbr) \
+					$(installer_layout)
 	@echo "Creating bootable installer image: $@"
-	$(hide) rm -f $@
-	$(hide) touch $@
-	$(hide) $(edit_mbr) -v -l $(installer_layout) -i $@ \
-		inst_bootloader=$(installer_bootloader_img) \
-		inst_boot=$(installer_boot_img) \
-		inst_data=$(installer_data_img) \
-		inst_stash=$(installer_stash_img)
-	$(hide) dd if=$(SYSLINUX_BASE)/mbr.bin of=$@ bs=440 count=1 conv=notrunc
+	@rm -f $@
+	$(hide) cat $(grub_bin) > $@
+	$(hide) $(edit_mbr) -l $(installer_layout) -i $@ \
+		inst_boot=$(installer_tmp_img) \
+		inst_data=$(installer_data_img)
 	@echo "Done with bootable installer image -[ $@ ]-"
 
+#
+# Ditto for the android_system_disk and android_data_disk images
+#
 
-# convert the installer_img (disk image) to a VirtualBox .vdi image
-INSTALLED_VBOXINSTALLERIMAGE_TARGET := $(PRODUCT_OUT)/installer.vdi
-$(INSTALLED_VBOXINSTALLERIMAGE_TARGET): \
-		$(INSTALLED_DISKINSTALLERIMAGE_TARGET) \
-		$(diskinstaller_root)/config.mk
-	$(hide) rm -f $@
-	$(hide) VBoxManage convertfromraw $< $@
+INSTALLED_ANDROID_IMAGE_SYSTEM_TARGET := $(PRODUCT_OUT)/android_system_disk.img
+android_system_layout := $(diskinstaller_root)/android_img_system_layout.conf
+
+INSTALLED_ANDROID_IMAGE_DATA_TARGET := $(PRODUCT_OUT)/android_data_disk.img
+android_data_layout := $(diskinstaller_root)/android_img_data_layout.conf
+
+$(INSTALLED_ANDROID_IMAGE_SYSTEM_TARGET): \
+					$(INSTALLED_SYSTEMIMAGE) \
+					$(INSTALLED_BOOTIMAGE_TARGET) \
+					$(grub_bin) \
+					$(edit_mbr) \
+					$(android_system_layout)
+	@echo "Creating bootable android system-disk image: $@"
+	@rm -f $@
+	$(hide) cat $(grub_bin) > $@
+	$(hide) $(edit_mbr) -l $(android_system_layout) -i $@ \
+		inst_boot=$(INSTALLED_BOOTIMAGE_TARGET) \
+		inst_system=$(INSTALLED_SYSTEMIMAGE)
+	@echo "Done with bootable android system-disk image -[ $@ ]-"
+
+$(INSTALLED_ANDROID_IMAGE_DATA_TARGET): \
+					$(INSTALLED_USERDATAIMAGE_TARGET) \
+					$(INSTALLED_CACHEIMAGE_TARGET) \
+					$(grub_bin) \
+					$(edit_mbr) \
+					$(android_data_layout)
+	@echo "Creating bootable android data-disk image: $@"
+	@rm -f $@
+	$(hide) cat $(grub_bin) > $@
+	$(hide) $(edit_mbr) -l $(android_data_layout) -i $@ \
+		inst_data=$(INSTALLED_USERDATAIMAGE_TARGET) \
+		inst_cache=$(INSTALLED_CACHEIMAGE_TARGET)
+	@echo "Done with bootable android data-disk image -[ $@ ]-"
+
+
+
+######################################################################
+# now convert the installer_img (disk image) to a VirtualBox image
+
+INSTALLED_VBOX_INSTALLER_IMAGE_TARGET := $(PRODUCT_OUT)/installer.vdi
+virtual_box_manager := VBoxManage
+# hrd-code the UUID so we don't have to release the disk manually in the VirtualBox manager.
+virtual_box_manager_options := convertfromraw --format VDI
+virtual_box_manager_system_disk_ptions := --uuid "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}"
+virtual_box_manager_data_disk_ptions   := --uuid "{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}"
+
+$(INSTALLED_VBOX_INSTALLER_IMAGE_TARGET): $(INSTALLED_DISK_INSTALLER_IMAGE_TARGET)
+	@rm -f $(INSTALLED_VBOX_INSTALLER_IMAGE_TARGET)
+	$(hide) $(virtual_box_manager) $(virtual_box_manager_options) $(INSTALLED_DISK_INSTALLER_IMAGE_TARGET) $(INSTALLED_VBOX_INSTALLER_IMAGE_TARGET)
 	@echo "Done with VirtualBox bootable installer image -[ $@ ]-"
 
+#
+# Ditto for the android_system_disk and android_user_disk images
+#
+
+INSTALLED_VBOX_SYSTEM_DISK_IMAGE_TARGET := $(PRODUCT_OUT)/android_system_disk.vdi
+$(INSTALLED_VBOX_SYSTEM_DISK_IMAGE_TARGET): $(INSTALLED_ANDROID_IMAGE_SYSTEM_TARGET)
+	@rm -f $@
+	$(hide) $(virtual_box_manager) \
+		$(virtual_box_manager_options) \
+		$(virtual_box_manager_system_disk_ptions) \
+		$^ $@
+	@echo "Done with VirtualBox bootable system-disk image -[ $@ ]-"
+
+INSTALLED_VBOX_DATA_DISK_IMAGE_TARGET := $(PRODUCT_OUT)/android_data_disk.vdi
+$(INSTALLED_VBOX_DATA_DISK_IMAGE_TARGET): $(INSTALLED_ANDROID_IMAGE_DATA_TARGET)
+	@rm -f $@
+	$(hide) $(virtual_box_manager) \
+		$(virtual_box_manager_options) \
+		$(virtual_box_manager_data_disk_ptions) \
+		$^ $@
+	@echo "Done with VirtualBox bootable data-disk image -[ $@ ]-"
+
 .PHONY: installer_img
-installer_img: $(INSTALLED_DISKINSTALLERIMAGE_TARGET)
+installer_img: $(INSTALLED_DISK_INSTALLER_IMAGE_TARGET)
 
 .PHONY: installer_vdi
-installer_vdi: $(INSTALLED_VBOXINSTALLERIMAGE_TARGET)
+installer_vdi: $(INSTALLED_VBOX_INSTALLER_IMAGE_TARGET)
 
-endif # TARGET_USE_SYSLINUX
-endif # TARGET_USE_DISKINSTALLER
+.PHONY: android_disk_vdi android_system_disk_vdi android_data_disk_vdi
+android_system_disk_vdi: $(INSTALLED_VBOX_SYSTEM_DISK_IMAGE_TARGET)
+android_data_disk_vdi: $(INSTALLED_VBOX_DATA_DISK_IMAGE_TARGET)
+android_disk_vdi: android_system_disk_vdi android_data_disk_vdi
 
+
+else  # ! TARGET_USE_DISKINSTALLER
+INSTALLED_DISK_INSTALLER_IMAGE_TARGET :=
+INSTALLED_VBOX_SYSTEM_DISK_IMAGE_TARGET :=
+INSTALLED_VBOX_DATA_DISK_IMAGE_TARGET :=
+endif
+endif # TARGET_ARCH == x86
